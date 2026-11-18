@@ -1,16 +1,22 @@
 from contextlib import asynccontextmanager
 
-# *** NEW ***
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 # *** NEW ***
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-# *** NEW ***
 from app import models, schemas
 from app.database import Base, engine, get_db
-from app.security import hash_password
+
+# *** NEW ***
+from app.security import (
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
 
 
 @asynccontextmanager
@@ -35,6 +41,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# *** NEW ***
+bearer_scheme = HTTPBearer()
+
+
+# *** NEW ***
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    # Reads the token from the "Authorization: Bearer <token>" header.
+    # Add Depends(get_current_user) to any endpoint that requires a logged-in user.
+    payload = decode_access_token(credentials.credentials)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+        )
+
+    user = db.query(models.User).filter(models.User.id == int(payload["sub"])).first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found.",
+        )
+    return user
+
 
 @app.get("/health")
 def health_check():
@@ -47,7 +79,6 @@ def root():
     return {"message": "Welcome to StudyStack"}
 
 
-# *** NEW ***
 @app.post(
     "/auth/register",
     response_model=schemas.UserResponse,
@@ -72,3 +103,26 @@ def register_user(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
     return new_user
+
+
+@app.post("/auth/login", response_model=schemas.TokenResponse)
+def login_user(login_in: schemas.LoginRequest, db: Session = Depends(get_db)):
+    email = login_in.email.lower()
+    user = db.query(models.User).filter(models.User.email == email).first()
+
+    # Same message for "no such email" and "wrong password" so attackers can't tell which emails exist
+    if user is None or not verify_password(login_in.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password.",
+        )
+
+    token = create_access_token(user.id, user.email)
+    return schemas.TokenResponse(access_token=token)
+
+
+# *** NEW ***
+@app.get("/auth/me", response_model=schemas.UserResponse)
+def read_current_user(current_user: models.User = Depends(get_current_user)):
+    # Protected endpoint: only works with a valid token
+    return current_user

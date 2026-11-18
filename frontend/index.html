@@ -10,23 +10,47 @@
   <h1>StudyStack</h1>
   <p>Study planner that tracks assignments and suggests a weekly schedule.</p>
 
-  <h2>Create an account</h2>
-  <form id="register-form">
-    <div>
-      <label for="email">Email</label><br>
-      <input type="text" id="email" name="email" autocomplete="email">
-    </div>
-    <div>
-      <label for="password">Password (8 to 72 characters)</label><br>
-      <input type="password" id="password" name="password" autocomplete="new-password">
-    </div>
-    <div>
-      <label for="confirm-password">Confirm password</label><br>
-      <input type="password" id="confirm-password" name="confirm-password" autocomplete="new-password">
-    </div>
-    <button type="submit">Register</button>
-  </form>
-  <p id="register-message"></p>
+  <!-- Shown when logged out -->
+  <div id="logged-out-view">
+    <h2>Log in</h2>
+    <form id="login-form">
+      <div>
+        <label for="login-email">Email</label><br>
+        <input type="text" id="login-email" autocomplete="email">
+      </div>
+      <div>
+        <label for="login-password">Password</label><br>
+        <input type="password" id="login-password" autocomplete="current-password">
+      </div>
+      <button type="submit">Log in</button>
+    </form>
+    <p id="login-message"></p>
+
+    <h2>Create an account</h2>
+    <form id="register-form">
+      <div>
+        <label for="email">Email</label><br>
+        <input type="text" id="email" name="email" autocomplete="email">
+      </div>
+      <div>
+        <label for="password">Password (8 to 72 characters)</label><br>
+        <input type="password" id="password" name="password" autocomplete="new-password">
+      </div>
+      <div>
+        <label for="confirm-password">Confirm password</label><br>
+        <input type="password" id="confirm-password" name="confirm-password" autocomplete="new-password">
+      </div>
+      <button type="submit">Register</button>
+    </form>
+    <p id="register-message"></p>
+  </div>
+
+  <!-- Shown when logged in -->
+  <div id="logged-in-view" hidden>
+    <h2>Welcome</h2>
+    <p>Logged in as <strong id="user-email"></strong></p>
+    <button id="logout-button">Log out</button>
+  </div>
 
   <hr>
   <button id="check-api">Check API connection</button>

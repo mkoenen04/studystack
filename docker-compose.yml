@@ -20,6 +20,7 @@ services:
     environment:
       PORT: "8080"
       DATABASE_URL: postgresql+psycopg2://studystack:studystack@db:5432/studystack
+      SECRET_KEY: dev-only-secret-change-me
     depends_on:
       db:
         condition: service_healthy
