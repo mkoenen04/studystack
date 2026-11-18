@@ -2,13 +2,21 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+
+# *** NEW ***
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.database import Base, engine, get_db
 
 # *** NEW ***
-from app.security import create_access_token, hash_password, verify_password
+from app.security import (
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
 
 
 @asynccontextmanager
@@ -32,6 +40,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# *** NEW ***
+bearer_scheme = HTTPBearer()
+
+
+# *** NEW ***
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    # Reads the token from the "Authorization: Bearer <token>" header.
+    # Add Depends(get_current_user) to any endpoint that requires a logged-in user.
+    payload = decode_access_token(credentials.credentials)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+        )
+
+    user = db.query(models.User).filter(models.User.id == int(payload["sub"])).first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found.",
+        )
+    return user
 
 
 @app.get("/health")
@@ -71,7 +105,6 @@ def register_user(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 
-# *** NEW ***
 @app.post("/auth/login", response_model=schemas.TokenResponse)
 def login_user(login_in: schemas.LoginRequest, db: Session = Depends(get_db)):
     email = login_in.email.lower()
@@ -86,3 +119,10 @@ def login_user(login_in: schemas.LoginRequest, db: Session = Depends(get_db)):
 
     token = create_access_token(user.id, user.email)
     return schemas.TokenResponse(access_token=token)
+
+
+# *** NEW ***
+@app.get("/auth/me", response_model=schemas.UserResponse)
+def read_current_user(current_user: models.User = Depends(get_current_user)):
+    # Protected endpoint: only works with a valid token
+    return current_user
