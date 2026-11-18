@@ -1,16 +1,14 @@
 from contextlib import asynccontextmanager
 
-# *** NEW ***
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-
-# *** NEW ***
 from sqlalchemy.orm import Session
 
-# *** NEW ***
 from app import models, schemas
 from app.database import Base, engine, get_db
-from app.security import hash_password
+
+# *** NEW ***
+from app.security import create_access_token, hash_password, verify_password
 
 
 @asynccontextmanager
@@ -47,7 +45,6 @@ def root():
     return {"message": "Welcome to StudyStack"}
 
 
-# *** NEW ***
 @app.post(
     "/auth/register",
     response_model=schemas.UserResponse,
@@ -72,3 +69,20 @@ def register_user(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
     return new_user
+
+
+# *** NEW ***
+@app.post("/auth/login", response_model=schemas.TokenResponse)
+def login_user(login_in: schemas.LoginRequest, db: Session = Depends(get_db)):
+    email = login_in.email.lower()
+    user = db.query(models.User).filter(models.User.email == email).first()
+
+    # Same message for "no such email" and "wrong password" so attackers can't tell which emails exist
+    if user is None or not verify_password(login_in.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password.",
+        )
+
+    token = create_access_token(user.id, user.email)
+    return schemas.TokenResponse(access_token=token)
