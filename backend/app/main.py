@@ -3,8 +3,6 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-# *** NEW ***
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -124,7 +122,6 @@ def read_current_user(current_user: models.User = Depends(get_current_user)):
     return current_user
 
 
-# *** NEW ***
 @app.post(
     "/courses",
     response_model=schemas.CourseResponse,
@@ -157,7 +154,6 @@ def create_course(
     return course
 
 
-# *** NEW ***
 @app.get("/courses", response_model=list[schemas.CourseResponse])
 def list_courses(
     db: Session = Depends(get_db),
@@ -172,7 +168,6 @@ def list_courses(
     )
 
 
-# *** NEW ***
 @app.post(
     "/assignments",
     response_model=schemas.AssignmentResponse,
@@ -211,7 +206,6 @@ def create_assignment(
     return assignment
 
 
-# *** NEW ***
 @app.get("/assignments", response_model=list[schemas.AssignmentResponse])
 def list_assignments(
     db: Session = Depends(get_db),
@@ -224,3 +218,69 @@ def list_assignments(
         .order_by(models.Assignment.due_date, models.Assignment.id)
         .all()
     )
+
+
+# *** NEW ***
+@app.post(
+    "/availability",
+    response_model=schemas.AvailabilityResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_availability_block(
+    block_in: schemas.AvailabilityCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    block = models.AvailabilityBlock(
+        user_id=current_user.id,
+        day_of_week=block_in.day_of_week,
+        start_time=block_in.start_time,
+        end_time=block_in.end_time,
+    )
+    db.add(block)
+    db.commit()
+    db.refresh(block)
+    return block
+
+
+# *** NEW ***
+@app.get("/availability", response_model=list[schemas.AvailabilityResponse])
+def list_availability_blocks(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    # Only the logged-in user's own blocks, ordered by day and then start time
+    return (
+        db.query(models.AvailabilityBlock)
+        .filter(models.AvailabilityBlock.user_id == current_user.id)
+        .order_by(
+            models.AvailabilityBlock.day_of_week,
+            models.AvailabilityBlock.start_time,
+        )
+        .all()
+    )
+
+
+# *** NEW ***
+@app.delete("/availability/{block_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_availability_block(
+    block_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    # The block must belong to this user; otherwise act as if it doesn't exist
+    block = (
+        db.query(models.AvailabilityBlock)
+        .filter(
+            models.AvailabilityBlock.id == block_id,
+            models.AvailabilityBlock.user_id == current_user.id,
+        )
+        .first()
+    )
+    if block is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Availability block not found.",
+        )
+    db.delete(block)
+    db.commit()
