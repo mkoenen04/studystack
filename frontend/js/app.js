@@ -2,6 +2,18 @@
 const API_URL = "http://localhost:8080";
 const TOKEN_KEY = "studystack_token";
 
+// *** NEW ***
+// Day numbers match the backend: 0 = Monday ... 6 = Sunday
+const DAY_NAMES = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
 // ----- Small helpers -----
 function setMessage(element, text, isError) {
   // textContent (not innerHTML) so server text can never inject HTML
@@ -21,11 +33,9 @@ function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
-// *** NEW ***
 // Course names by id, so the assignment list can show names instead of numbers
 let coursesById = {};
 
-// *** NEW ***
 async function authFetch(path, options) {
   // Sends a request with the saved token; logs the user out if the token is rejected
   const settings = options || {};
@@ -40,7 +50,6 @@ async function authFetch(path, options) {
   return response;
 }
 
-// *** NEW ***
 async function loadCourses() {
   const select = document.getElementById("assignment-course");
   select.replaceChildren();
@@ -73,7 +82,6 @@ async function loadCourses() {
   }
 }
 
-// *** NEW ***
 function renderAssignments(assignments) {
   const tableBody = document.getElementById("assignment-rows");
   const table = document.getElementById("assignment-table");
@@ -106,7 +114,6 @@ function renderAssignments(assignments) {
   }
 }
 
-// *** NEW ***
 async function loadAssignments() {
   try {
     const response = await authFetch("/assignments");
@@ -120,6 +127,87 @@ async function loadAssignments() {
 }
 
 // *** NEW ***
+function formatTime(timeText) {
+  // The server sends "09:00:00"; show "09:00"
+  return timeText.slice(0, 5);
+}
+
+// *** NEW ***
+const availabilityMessage = document.getElementById("availability-message");
+
+// *** NEW ***
+async function removeAvailabilityBlock(blockId) {
+  try {
+    const response = await authFetch("/availability/" + blockId, { method: "DELETE" });
+    if (response.status === 204) {
+      setMessage(availabilityMessage, "Time block removed.", false);
+    } else if (response.status === 404) {
+      setMessage(availabilityMessage, "That time block no longer exists.", true);
+    } else if (response.status !== 401) {
+      setMessage(availabilityMessage, "Something went wrong. Please try again.", true);
+    }
+    await loadAvailability();
+  } catch (error) {
+    setMessage(availabilityMessage, "Could not reach the server. Is the backend running?", true);
+  }
+}
+
+// *** NEW ***
+function renderAvailability(blocks) {
+  const tableBody = document.getElementById("availability-rows");
+  const table = document.getElementById("availability-table");
+  const emptyText = document.getElementById("availability-empty");
+  tableBody.replaceChildren();
+
+  if (blocks.length === 0) {
+    table.hidden = true;
+    emptyText.hidden = false;
+    return;
+  }
+
+  table.hidden = false;
+  emptyText.hidden = true;
+
+  for (const block of blocks) {
+    const row = document.createElement("tr");
+    const cells = [
+      DAY_NAMES[block.day_of_week],
+      formatTime(block.start_time),
+      formatTime(block.end_time),
+    ];
+    for (const text of cells) {
+      const cell = document.createElement("td");
+      cell.textContent = text;
+      row.appendChild(cell);
+    }
+
+    const actionCell = document.createElement("td");
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.textContent = "Remove";
+    removeButton.addEventListener("click", function () {
+      removeAvailabilityBlock(block.id);
+    });
+    actionCell.appendChild(removeButton);
+    row.appendChild(actionCell);
+
+    tableBody.appendChild(row);
+  }
+}
+
+// *** NEW ***
+async function loadAvailability() {
+  try {
+    const response = await authFetch("/availability");
+    if (!response.ok) {
+      return;
+    }
+    renderAvailability(await response.json());
+  } catch (error) {
+    // Leave the list as it is; the user can refresh
+  }
+}
+
 async function showLoggedInView(email) {
   document.getElementById("user-email").textContent = email;
   document.getElementById("logged-out-view").hidden = true;
@@ -127,15 +215,18 @@ async function showLoggedInView(email) {
   // Courses first, so the assignment list can show course names
   await loadCourses();
   await loadAssignments();
+  // *** NEW ***
+  await loadAvailability();
 }
 
-// *** NEW ***
 function showLoggedOutView() {
   document.getElementById("logged-in-view").hidden = true;
   document.getElementById("logged-out-view").hidden = false;
   // Don't leave one user's data on the page after logging out
   document.getElementById("assignment-rows").replaceChildren();
   document.getElementById("assignment-course").replaceChildren();
+  // *** NEW ***
+  document.getElementById("availability-rows").replaceChildren();
   coursesById = {};
 }
 
@@ -287,12 +378,10 @@ document.getElementById("logout-button").addEventListener("click", function () {
   showLoggedOutView();
 });
 
-// *** NEW ***
 // ----- Add course form (MDT-23) -----
 const courseForm = document.getElementById("course-form");
 const courseMessage = document.getElementById("course-message");
 
-// *** NEW ***
 courseForm.addEventListener("submit", async function (event) {
   event.preventDefault();
 
@@ -326,12 +415,10 @@ courseForm.addEventListener("submit", async function (event) {
   }
 });
 
-// *** NEW ***
 // ----- Add assignment form (MDT-23) -----
 const assignmentForm = document.getElementById("assignment-form");
 const assignmentMessage = document.getElementById("assignment-message");
 
-// *** NEW ***
 assignmentForm.addEventListener("submit", async function (event) {
   event.preventDefault();
 
@@ -386,6 +473,59 @@ assignmentForm.addEventListener("submit", async function (event) {
     }
   } catch (error) {
     setMessage(assignmentMessage, "Could not reach the server. Is the backend running?", true);
+  }
+});
+
+// *** NEW ***
+// ----- Add availability form (MDT-29) -----
+const availabilityForm = document.getElementById("availability-form");
+
+// *** NEW ***
+availabilityForm.addEventListener("submit", async function (event) {
+  event.preventDefault();
+
+  const day = document.getElementById("availability-day").value;
+  const startTime = document.getElementById("availability-start").value;
+  const endTime = document.getElementById("availability-end").value;
+
+  // Checks that can be done in the browser, before calling the API
+  if (startTime === "" || endTime === "") {
+    setMessage(availabilityMessage, "Please choose a start time and an end time.", true);
+    return;
+  }
+  if (endTime <= startTime) {
+    setMessage(availabilityMessage, "End time must be after start time.", true);
+    return;
+  }
+
+  try {
+    const response = await authFetch("/availability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        day_of_week: Number(day),
+        start_time: startTime,
+        end_time: endTime,
+      }),
+    });
+    const data = await response.json();
+
+    if (response.status === 201) {
+      setMessage(
+        availabilityMessage,
+        "Added " + DAY_NAMES[data.day_of_week] + " " + formatTime(data.start_time) + " to " + formatTime(data.end_time) + ".",
+        false
+      );
+      document.getElementById("availability-start").value = "";
+      document.getElementById("availability-end").value = "";
+      await loadAvailability();
+    } else if (response.status === 422) {
+      setMessage(availabilityMessage, "Please check the day and times. The end time must be after the start time.", true);
+    } else if (response.status !== 401) {
+      setMessage(availabilityMessage, "Something went wrong. Please try again.", true);
+    }
+  } catch (error) {
+    setMessage(availabilityMessage, "Could not reach the server. Is the backend running?", true);
   }
 });
 
