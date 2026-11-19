@@ -519,6 +519,8 @@ availabilityForm.addEventListener("submit", async function (event) {
       document.getElementById("availability-start").value = "";
       document.getElementById("availability-end").value = "";
       await loadAvailability();
+        } else if (response.status === 409) {
+      setMessage(availabilityMessage, data.detail, true);
     } else if (response.status === 422) {
       setMessage(availabilityMessage, "Please check the day and times. The end time must be after the start time.", true);
     } else if (response.status !== 401) {

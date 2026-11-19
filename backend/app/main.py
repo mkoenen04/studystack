@@ -15,6 +15,18 @@ from app.security import (
     verify_password,
 )
 
+# *** NEW ***
+# Day numbers match the database: 0 = Monday ... 6 = Sunday
+DAY_NAMES = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -220,7 +232,6 @@ def list_assignments(
     )
 
 
-# *** NEW ***
 @app.post(
     "/availability",
     response_model=schemas.AvailabilityResponse,
@@ -231,6 +242,33 @@ def create_availability_block(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    # *** NEW ***
+    # Two blocks overlap when each one starts before the other ends.
+    # Blocks that only touch (one ends exactly when the next starts) are allowed.
+    overlapping_block = (
+        db.query(models.AvailabilityBlock)
+        .filter(
+            models.AvailabilityBlock.user_id == current_user.id,
+            models.AvailabilityBlock.day_of_week == block_in.day_of_week,
+            models.AvailabilityBlock.start_time < block_in.end_time,
+            models.AvailabilityBlock.end_time > block_in.start_time,
+        )
+        .first()
+    )
+    if overlapping_block is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This overlaps with your existing "
+                + DAY_NAMES[overlapping_block.day_of_week]
+                + " block from "
+                + overlapping_block.start_time.strftime("%H:%M")
+                + " to "
+                + overlapping_block.end_time.strftime("%H:%M")
+                + "."
+            ),
+        )
+
     block = models.AvailabilityBlock(
         user_id=current_user.id,
         day_of_week=block_in.day_of_week,
@@ -243,7 +281,6 @@ def create_availability_block(
     return block
 
 
-# *** NEW ***
 @app.get("/availability", response_model=list[schemas.AvailabilityResponse])
 def list_availability_blocks(
     db: Session = Depends(get_db),
@@ -261,7 +298,6 @@ def list_availability_blocks(
     )
 
 
-# *** NEW ***
 @app.delete("/availability/{block_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_availability_block(
     block_id: int,
