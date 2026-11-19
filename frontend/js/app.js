@@ -9,35 +9,136 @@ function setMessage(element, text, isError) {
   element.style.color = isError ? "crimson" : "green";
 }
 
-// *** NEW ***
 function saveToken(token) {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
-// *** NEW ***
 function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-// *** NEW ***
 function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
 // *** NEW ***
-function showLoggedInView(email) {
+// Course names by id, so the assignment list can show names instead of numbers
+let coursesById = {};
+
+// *** NEW ***
+async function authFetch(path, options) {
+  // Sends a request with the saved token; logs the user out if the token is rejected
+  const settings = options || {};
+  const headers = Object.assign({}, settings.headers, {
+    Authorization: "Bearer " + getToken(),
+  });
+  const response = await fetch(API_URL + path, Object.assign({}, settings, { headers: headers }));
+  if (response.status === 401) {
+    clearToken();
+    showLoggedOutView();
+  }
+  return response;
+}
+
+// *** NEW ***
+async function loadCourses() {
+  const select = document.getElementById("assignment-course");
+  select.replaceChildren();
+  coursesById = {};
+
+  try {
+    const response = await authFetch("/courses");
+    if (!response.ok) {
+      return;
+    }
+    const courses = await response.json();
+
+    if (courses.length === 0) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Add a course first";
+      select.appendChild(placeholder);
+      return;
+    }
+
+    for (const course of courses) {
+      coursesById[course.id] = course.name;
+      const option = document.createElement("option");
+      option.value = String(course.id);
+      option.textContent = course.name;
+      select.appendChild(option);
+    }
+  } catch (error) {
+    // Leave the dropdown empty; the user can refresh
+  }
+}
+
+// *** NEW ***
+function renderAssignments(assignments) {
+  const tableBody = document.getElementById("assignment-rows");
+  const table = document.getElementById("assignment-table");
+  const emptyText = document.getElementById("assignment-empty");
+  tableBody.replaceChildren();
+
+  if (assignments.length === 0) {
+    table.hidden = true;
+    emptyText.hidden = false;
+    return;
+  }
+
+  table.hidden = false;
+  emptyText.hidden = true;
+
+  for (const assignment of assignments) {
+    const row = document.createElement("tr");
+    const cells = [
+      assignment.title,
+      coursesById[assignment.course_id] || "Unknown course",
+      assignment.due_date,
+      assignment.estimated_hours + " h",
+    ];
+    for (const text of cells) {
+      const cell = document.createElement("td");
+      cell.textContent = text;
+      row.appendChild(cell);
+    }
+    tableBody.appendChild(row);
+  }
+}
+
+// *** NEW ***
+async function loadAssignments() {
+  try {
+    const response = await authFetch("/assignments");
+    if (!response.ok) {
+      return;
+    }
+    renderAssignments(await response.json());
+  } catch (error) {
+    // Leave the list as it is; the user can refresh
+  }
+}
+
+// *** NEW ***
+async function showLoggedInView(email) {
   document.getElementById("user-email").textContent = email;
   document.getElementById("logged-out-view").hidden = true;
   document.getElementById("logged-in-view").hidden = false;
+  // Courses first, so the assignment list can show course names
+  await loadCourses();
+  await loadAssignments();
 }
 
 // *** NEW ***
 function showLoggedOutView() {
   document.getElementById("logged-in-view").hidden = true;
   document.getElementById("logged-out-view").hidden = false;
+  // Don't leave one user's data on the page after logging out
+  document.getElementById("assignment-rows").replaceChildren();
+  document.getElementById("assignment-course").replaceChildren();
+  coursesById = {};
 }
 
-// *** NEW ***
 async function loadCurrentUser() {
   // Asks the backend who the saved token belongs to; falls back to the logged-out view
   const token = getToken();
@@ -51,7 +152,7 @@ async function loadCurrentUser() {
     });
     if (response.ok) {
       const user = await response.json();
-      showLoggedInView(user.email);
+      await showLoggedInView(user.email);
     } else {
       // Token is invalid or expired
       clearToken();
@@ -138,12 +239,10 @@ registerForm.addEventListener("submit", async function (event) {
   }
 });
 
-// *** NEW ***
 // ----- Login form (MDT-11) -----
 const loginForm = document.getElementById("login-form");
 const loginMessage = document.getElementById("login-message");
 
-// *** NEW ***
 loginForm.addEventListener("submit", async function (event) {
   event.preventDefault();
 
@@ -182,7 +281,6 @@ loginForm.addEventListener("submit", async function (event) {
   }
 });
 
-// *** NEW ***
 // ----- Log out -----
 document.getElementById("logout-button").addEventListener("click", function () {
   clearToken();
@@ -190,5 +288,106 @@ document.getElementById("logout-button").addEventListener("click", function () {
 });
 
 // *** NEW ***
+// ----- Add course form (MDT-23) -----
+const courseForm = document.getElementById("course-form");
+const courseMessage = document.getElementById("course-message");
+
+// *** NEW ***
+courseForm.addEventListener("submit", async function (event) {
+  event.preventDefault();
+
+  const name = document.getElementById("course-name").value.trim();
+  if (name === "") {
+    setMessage(courseMessage, "Please enter a course name.", true);
+    return;
+  }
+
+  try {
+    const response = await authFetch("/courses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name }),
+    });
+    const data = await response.json();
+
+    if (response.status === 201) {
+      setMessage(courseMessage, "Added course: " + data.name, false);
+      courseForm.reset();
+      await loadCourses();
+    } else if (response.status === 409) {
+      setMessage(courseMessage, data.detail, true);
+    } else if (response.status === 422) {
+      setMessage(courseMessage, "Course name must be 1 to 100 characters.", true);
+    } else if (response.status !== 401) {
+      setMessage(courseMessage, "Something went wrong. Please try again.", true);
+    }
+  } catch (error) {
+    setMessage(courseMessage, "Could not reach the server. Is the backend running?", true);
+  }
+});
+
+// *** NEW ***
+// ----- Add assignment form (MDT-23) -----
+const assignmentForm = document.getElementById("assignment-form");
+const assignmentMessage = document.getElementById("assignment-message");
+
+// *** NEW ***
+assignmentForm.addEventListener("submit", async function (event) {
+  event.preventDefault();
+
+  const courseId = document.getElementById("assignment-course").value;
+  const title = document.getElementById("assignment-title").value.trim();
+  const dueDate = document.getElementById("assignment-due").value;
+  const hours = parseFloat(document.getElementById("assignment-hours").value);
+
+  // Checks that can be done in the browser, before calling the API
+  if (courseId === "") {
+    setMessage(assignmentMessage, "Please add and select a course first.", true);
+    return;
+  }
+  if (title === "") {
+    setMessage(assignmentMessage, "Please enter a title.", true);
+    return;
+  }
+  if (dueDate === "") {
+    setMessage(assignmentMessage, "Please choose a due date.", true);
+    return;
+  }
+  if (Number.isNaN(hours) || hours <= 0 || hours > 100) {
+    setMessage(assignmentMessage, "Estimated hours must be more than 0 and at most 100.", true);
+    return;
+  }
+
+  try {
+    const response = await authFetch("/assignments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        course_id: Number(courseId),
+        title: title,
+        due_date: dueDate,
+        estimated_hours: hours,
+      }),
+    });
+    const data = await response.json();
+
+    if (response.status === 201) {
+      setMessage(assignmentMessage, "Added assignment: " + data.title, false);
+      document.getElementById("assignment-title").value = "";
+      document.getElementById("assignment-due").value = "";
+      document.getElementById("assignment-hours").value = "";
+      await loadAssignments();
+    } else if (response.status === 404) {
+      setMessage(assignmentMessage, data.detail, true);
+    } else if (response.status === 422) {
+      setMessage(assignmentMessage, "Please check the title, due date, and hours.", true);
+    } else if (response.status !== 401) {
+      setMessage(assignmentMessage, "Something went wrong. Please try again.", true);
+    }
+  } catch (error) {
+    setMessage(assignmentMessage, "Could not reach the server. Is the backend running?", true);
+  }
+});
+
 // On page load, check whether a saved token is still valid
 loadCurrentUser();
