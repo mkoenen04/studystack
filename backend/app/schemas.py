@@ -1,7 +1,7 @@
 # *** NEW ***
-from datetime import date, datetime
+from datetime import date, datetime, time
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 class UserCreate(BaseModel):
@@ -28,7 +28,6 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
-# *** NEW ***
 class CourseCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
 
@@ -36,7 +35,6 @@ class CourseCreate(BaseModel):
     model_config = {"str_strip_whitespace": True}
 
 
-# *** NEW ***
 class CourseResponse(BaseModel):
     id: int
     name: str
@@ -45,7 +43,6 @@ class CourseResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# *** NEW ***
 class AssignmentCreate(BaseModel):
     course_id: int
     title: str = Field(min_length=1, max_length=200)
@@ -55,7 +52,6 @@ class AssignmentCreate(BaseModel):
     model_config = {"str_strip_whitespace": True}
 
 
-# *** NEW ***
 class AssignmentResponse(BaseModel):
     id: int
     course_id: int
@@ -64,5 +60,28 @@ class AssignmentResponse(BaseModel):
     estimated_hours: float
     is_completed: bool
     created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# *** NEW ***
+class AvailabilityCreate(BaseModel):
+    day_of_week: int = Field(ge=0, le=6)
+    start_time: time
+    end_time: time
+
+    @model_validator(mode="after")
+    def end_must_be_after_start(self):
+        if self.end_time <= self.start_time:
+            raise ValueError("End time must be after start time.")
+        return self
+
+
+# *** NEW ***
+class AvailabilityResponse(BaseModel):
+    id: int
+    day_of_week: int
+    start_time: time
+    end_time: time
 
     model_config = {"from_attributes": True}
