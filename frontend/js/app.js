@@ -2,7 +2,6 @@
 const API_URL = "http://localhost:8080";
 const TOKEN_KEY = "studystack_token";
 
-// *** NEW ***
 // Day numbers match the backend: 0 = Monday ... 6 = Sunday
 const DAY_NAMES = [
   "Monday",
@@ -31,6 +30,36 @@ function getToken() {
 
 function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+// *** NEW ***
+// Date helpers. Dates are handled as "YYYY-MM-DD" text and built from their parts,
+// so the browser's time zone can never shift a date by a day.
+function toIsoDate(dateObject) {
+  const month = String(dateObject.getMonth() + 1).padStart(2, "0");
+  const day = String(dateObject.getDate()).padStart(2, "0");
+  return dateObject.getFullYear() + "-" + month + "-" + day;
+}
+
+// *** NEW ***
+function parseIsoDate(text) {
+  const parts = text.split("-");
+  return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+}
+
+// *** NEW ***
+function addDaysIso(isoDate, offset) {
+  const dateObject = parseIsoDate(isoDate);
+  dateObject.setDate(dateObject.getDate() + offset);
+  return toIsoDate(dateObject);
+}
+
+// *** NEW ***
+function formatDayLabel(isoDate) {
+  // Example: "Mon 11/23". JavaScript's getDay() starts on Sunday, so shift it to start on Monday.
+  const dateObject = parseIsoDate(isoDate);
+  const dayIndex = (dateObject.getDay() + 6) % 7;
+  return DAY_NAMES[dayIndex].slice(0, 3) + " " + (dateObject.getMonth() + 1) + "/" + dateObject.getDate();
 }
 
 // Course names by id, so the assignment list can show names instead of numbers
@@ -126,16 +155,16 @@ async function loadAssignments() {
   }
 }
 
-// *** NEW ***
 function formatTime(timeText) {
   // The server sends "09:00:00"; show "09:00"
   return timeText.slice(0, 5);
 }
 
-// *** NEW ***
 const availabilityMessage = document.getElementById("availability-message");
 
 // *** NEW ***
+const scheduleMessage = document.getElementById("schedule-message");
+
 async function removeAvailabilityBlock(blockId) {
   try {
     const response = await authFetch("/availability/" + blockId, { method: "DELETE" });
@@ -147,12 +176,13 @@ async function removeAvailabilityBlock(blockId) {
       setMessage(availabilityMessage, "Something went wrong. Please try again.", true);
     }
     await loadAvailability();
+    // *** NEW ***
+    await loadSchedule();
   } catch (error) {
     setMessage(availabilityMessage, "Could not reach the server. Is the backend running?", true);
   }
 }
 
-// *** NEW ***
 function renderAvailability(blocks) {
   const tableBody = document.getElementById("availability-rows");
   const table = document.getElementById("availability-table");
@@ -195,7 +225,6 @@ function renderAvailability(blocks) {
   }
 }
 
-// *** NEW ***
 async function loadAvailability() {
   try {
     const response = await authFetch("/availability");
@@ -208,6 +237,115 @@ async function loadAvailability() {
   }
 }
 
+// *** NEW ***
+function renderSchedule(data) {
+  const header = document.getElementById("schedule-header");
+  const body = document.getElementById("schedule-body");
+  const gridWrap = document.getElementById("schedule-scroll");
+  const summary = document.getElementById("schedule-summary");
+  const unscheduledSection = document.getElementById("schedule-unscheduled-section");
+  const unscheduledList = document.getElementById("schedule-unscheduled");
+
+  header.replaceChildren();
+  body.replaceChildren();
+  unscheduledList.replaceChildren();
+
+  if (data.sessions.length === 0 && data.unscheduled.length === 0) {
+    gridWrap.hidden = true;
+    unscheduledSection.hidden = true;
+    summary.textContent = "Nothing to schedule yet. Add assignments and availability times below.";
+    return;
+  }
+
+  gridWrap.hidden = false;
+
+  // One column per day of the 7-day plan
+  for (let offset = 0; offset < 7; offset++) {
+    const dayKey = addDaysIso(data.start_date, offset);
+
+    const headerCell = document.createElement("th");
+    headerCell.textContent = formatDayLabel(dayKey);
+    header.appendChild(headerCell);
+
+    const bodyCell = document.createElement("td");
+    const daySessions = data.sessions.filter(function (session) {
+      return session.day === dayKey;
+    });
+
+    if (daySessions.length === 0) {
+      bodyCell.textContent = "-";
+    }
+
+    for (const session of daySessions) {
+      const sessionBox = document.createElement("div");
+      sessionBox.className = "session";
+      let text =
+        formatTime(session.start_time) +
+        " to " +
+        formatTime(session.end_time) +
+        ": " +
+        session.title +
+        " (" +
+        session.course_name +
+        ")";
+      if (session.is_overdue) {
+        text += " - overdue";
+        sessionBox.classList.add("overdue");
+      }
+      sessionBox.textContent = text;
+      bodyCell.appendChild(sessionBox);
+    }
+
+    body.appendChild(bodyCell);
+  }
+
+  let summaryText =
+    "Scheduled " + data.scheduled_hours + " hours between " + data.start_date + " and " + data.end_date + ".";
+  if (data.unscheduled.length === 0) {
+    summaryText += " Everything fits in your available time.";
+  }
+  summary.textContent = summaryText;
+
+  // Work that did not fit
+  unscheduledSection.hidden = data.unscheduled.length === 0;
+  for (const item of data.unscheduled) {
+    const listItem = document.createElement("li");
+    let text =
+      item.title + " (" + item.course_name + "), due " + item.due_date + ": " + item.hours_short + " h short";
+    if (item.is_overdue) {
+      text += " - overdue";
+      listItem.classList.add("overdue");
+    }
+    listItem.textContent = text;
+    unscheduledList.appendChild(listItem);
+  }
+}
+
+// *** NEW ***
+async function loadSchedule() {
+  const startInput = document.getElementById("schedule-start");
+  if (startInput.value === "") {
+    // The server may be a day ahead of the user, so default to the browser's own "today"
+    startInput.value = toIsoDate(new Date());
+  }
+
+  try {
+    const response = await authFetch("/schedule?start=" + encodeURIComponent(startInput.value));
+    const data = await response.json();
+
+    if (response.status === 200) {
+      setMessage(scheduleMessage, "", false);
+      renderSchedule(data);
+    } else if (response.status === 422) {
+      setMessage(scheduleMessage, "Please choose a valid start date.", true);
+    } else if (response.status !== 401) {
+      setMessage(scheduleMessage, "Could not load the schedule. Please try again.", true);
+    }
+  } catch (error) {
+    setMessage(scheduleMessage, "Could not reach the server. Is the backend running?", true);
+  }
+}
+
 async function showLoggedInView(email) {
   document.getElementById("user-email").textContent = email;
   document.getElementById("logged-out-view").hidden = true;
@@ -215,8 +353,9 @@ async function showLoggedInView(email) {
   // Courses first, so the assignment list can show course names
   await loadCourses();
   await loadAssignments();
-  // *** NEW ***
   await loadAvailability();
+  // *** NEW ***
+  await loadSchedule();
 }
 
 function showLoggedOutView() {
@@ -225,8 +364,14 @@ function showLoggedOutView() {
   // Don't leave one user's data on the page after logging out
   document.getElementById("assignment-rows").replaceChildren();
   document.getElementById("assignment-course").replaceChildren();
-  // *** NEW ***
   document.getElementById("availability-rows").replaceChildren();
+  // *** NEW ***
+  document.getElementById("schedule-header").replaceChildren();
+  document.getElementById("schedule-body").replaceChildren();
+  document.getElementById("schedule-unscheduled").replaceChildren();
+  document.getElementById("schedule-summary").textContent = "";
+  document.getElementById("schedule-message").textContent = "";
+  document.getElementById("schedule-start").value = "";
   coursesById = {};
 }
 
@@ -464,6 +609,8 @@ assignmentForm.addEventListener("submit", async function (event) {
       document.getElementById("assignment-due").value = "";
       document.getElementById("assignment-hours").value = "";
       await loadAssignments();
+      // *** NEW ***
+      await loadSchedule();
     } else if (response.status === 404) {
       setMessage(assignmentMessage, data.detail, true);
     } else if (response.status === 422) {
@@ -476,11 +623,9 @@ assignmentForm.addEventListener("submit", async function (event) {
   }
 });
 
-// *** NEW ***
-// ----- Add availability form (MDT-29) -----
+// ----- Add availability form (MDT-29, overlap message from MDT-30) -----
 const availabilityForm = document.getElementById("availability-form");
 
-// *** NEW ***
 availabilityForm.addEventListener("submit", async function (event) {
   event.preventDefault();
 
@@ -519,7 +664,9 @@ availabilityForm.addEventListener("submit", async function (event) {
       document.getElementById("availability-start").value = "";
       document.getElementById("availability-end").value = "";
       await loadAvailability();
-        } else if (response.status === 409) {
+      // *** NEW ***
+      await loadSchedule();
+    } else if (response.status === 409) {
       setMessage(availabilityMessage, data.detail, true);
     } else if (response.status === 422) {
       setMessage(availabilityMessage, "Please check the day and times. The end time must be after the start time.", true);
@@ -529,6 +676,21 @@ availabilityForm.addEventListener("submit", async function (event) {
   } catch (error) {
     setMessage(availabilityMessage, "Could not reach the server. Is the backend running?", true);
   }
+});
+
+// *** NEW ***
+// ----- Schedule form (MDT-35) -----
+const scheduleForm = document.getElementById("schedule-form");
+
+// *** NEW ***
+scheduleForm.addEventListener("submit", async function (event) {
+  event.preventDefault();
+
+  if (document.getElementById("schedule-start").value === "") {
+    setMessage(scheduleMessage, "Please choose a start date.", true);
+    return;
+  }
+  await loadSchedule();
 });
 
 // On page load, check whether a saved token is still valid
