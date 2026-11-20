@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the application code
 COPY app ./app
+COPY tests ./tests
 
 # Cloud Run supplies PORT at runtime; default to 8080 locally
 ENV PORT=8080

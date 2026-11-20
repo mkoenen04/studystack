@@ -85,3 +85,33 @@ class AvailabilityResponse(BaseModel):
     end_time: time
 
     model_config = {"from_attributes": True}
+
+# *** NEW ***
+class ScheduleSessionResponse(BaseModel):
+    assignment_id: int
+    title: str
+    course_name: str
+    due_date: date
+    is_overdue: bool
+    day: date
+    start_time: time
+    end_time: time
+
+
+# *** NEW ***
+class UnscheduledWorkResponse(BaseModel):
+    assignment_id: int
+    title: str
+    course_name: str
+    due_date: date
+    is_overdue: bool
+    hours_short: float
+
+
+# *** NEW ***
+class ScheduleResponse(BaseModel):
+    start_date: date
+    end_date: date
+    scheduled_hours: float
+    sessions: list[ScheduleSessionResponse]
+    unscheduled: list[UnscheduledWorkResponse]

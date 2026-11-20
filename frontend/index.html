@@ -9,6 +9,10 @@
     table { border-collapse: collapse; margin-top: 8px; }
     th, td { border: 1px solid #999; padding: 6px 12px; text-align: left; }
     form div { margin-bottom: 8px; }
+    #schedule-scroll { overflow-x: auto; }
+    #schedule-grid th, #schedule-grid td { vertical-align: top; min-width: 130px; }
+    .session { margin-bottom: 8px; }
+    .overdue { color: crimson; }
   </style>
 </head>
 <body>
@@ -56,6 +60,33 @@
     <p>Logged in as <strong id="user-email"></strong></p>
     <button id="logout-button">Log out</button>
 
+    <!-- *** NEW *** -->
+    <h2>Your weekly study schedule</h2>
+    <form id="schedule-form">
+      <div>
+        <label for="schedule-start">Plan the 7 days starting on</label><br>
+        <input type="date" id="schedule-start">
+      </div>
+      <button type="submit">Show schedule</button>
+    </form>
+    <p id="schedule-message"></p>
+    <p id="schedule-summary"></p>
+    <div id="schedule-scroll" hidden>
+      <table id="schedule-grid">
+        <thead>
+          <tr id="schedule-header"></tr>
+        </thead>
+        <tbody>
+          <tr id="schedule-body"></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="schedule-unscheduled-section" hidden>
+      <h3>Didn't fit</h3>
+      <p>These don't fit in your available time before they are due. Add availability or adjust the work.</p>
+      <ul id="schedule-unscheduled"></ul>
+    </div>
+
     <h2>Add a course</h2>
     <form id="course-form">
       <div>
@@ -102,7 +133,6 @@
       <tbody id="assignment-rows"></tbody>
     </table>
 
-    <!-- *** NEW *** -->
     <h2>Weekly availability</h2>
     <p>Add the times you can study. You can add several blocks on the same day.</p>
     <form id="availability-form">
@@ -130,7 +160,6 @@
     </form>
     <p id="availability-message"></p>
 
-    <!-- *** NEW *** -->
     <h3>Your available times</h3>
     <p id="availability-empty">No availability added yet.</p>
     <table id="availability-table" hidden>
