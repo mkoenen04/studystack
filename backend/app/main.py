@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import date, timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,8 @@ from app.security import (
     hash_password,
     verify_password,
 )
+
+from app.scheduler import build_schedule, compute_free_slots
 
 # *** NEW ***
 # Day numbers match the database: 0 = Monday ... 6 = Sunday
@@ -320,3 +323,93 @@ def delete_availability_block(
         )
     db.delete(block)
     db.commit()
+
+
+# *** NEW ***
+def _session_minutes(session) -> int:
+    start_minutes = session.start.hour * 60 + session.start.minute
+    end_minutes = session.end.hour * 60 + session.end.minute
+    return end_minutes - start_minutes
+
+
+# *** NEW ***
+@app.get("/schedule", response_model=schemas.ScheduleResponse)
+def get_schedule(
+    start: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    # start is the first day of the 7-day plan; the page sends the user's local "today"
+    if start is not None and not (date(2000, 1, 1) <= start <= date(2100, 12, 31)):
+        raise HTTPException(
+            status_code=422,
+            detail="Start date must be between 2000 and 2100.",
+        )
+    start_date = start or date.today()
+    plan_days = 7
+
+    # Only this user's data, and only assignments that are not completed
+    assignments = (
+        db.query(models.Assignment)
+        .filter(
+            models.Assignment.user_id == current_user.id,
+            models.Assignment.is_completed.is_(False),
+        )
+        .order_by(models.Assignment.due_date, models.Assignment.id)
+        .all()
+    )
+    course_names = {
+        course.id: course.name
+        for course in db.query(models.Course)
+        .filter(models.Course.user_id == current_user.id)
+        .all()
+    }
+    blocks = (
+        db.query(models.AvailabilityBlock)
+        .filter(models.AvailabilityBlock.user_id == current_user.id)
+        .all()
+    )
+
+    slots = compute_free_slots(blocks, start_date, days=plan_days)
+    result = build_schedule(assignments, slots, start_date)
+
+    assignments_by_id = {assignment.id: assignment for assignment in assignments}
+
+    sessions = []
+    for session in result.sessions:
+        assignment = assignments_by_id[session.assignment_id]
+        sessions.append(
+            schemas.ScheduleSessionResponse(
+                assignment_id=assignment.id,
+                title=assignment.title,
+                course_name=course_names.get(assignment.course_id, "Unknown course"),
+                due_date=assignment.due_date,
+                is_overdue=assignment.due_date < start_date,
+                day=session.day,
+                start_time=session.start,
+                end_time=session.end,
+            )
+        )
+
+    unscheduled = []
+    for item in result.unscheduled:
+        assignment = assignments_by_id[item.assignment_id]
+        unscheduled.append(
+            schemas.UnscheduledWorkResponse(
+                assignment_id=assignment.id,
+                title=assignment.title,
+                course_name=course_names.get(assignment.course_id, "Unknown course"),
+                due_date=assignment.due_date,
+                is_overdue=assignment.due_date < start_date,
+                hours_short=round(item.minutes / 60, 2),
+            )
+        )
+
+    scheduled_minutes = sum(_session_minutes(session) for session in result.sessions)
+    return schemas.ScheduleResponse(
+        start_date=start_date,
+        end_date=start_date + timedelta(days=plan_days - 1),
+        scheduled_hours=round(scheduled_minutes / 60, 2),
+        sessions=sessions,
+        unscheduled=unscheduled,
+    )
