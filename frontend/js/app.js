@@ -1,5 +1,5 @@
 // Address of the backend API as seen from the browser
-const API_URL = "http://localhost:8080";
+const API_URL = window.STUDYSTACK_API_URL || "http://localhost:8080";
 const TOKEN_KEY = "studystack_token";
 
 // Day numbers match the backend: 0 = Monday ... 6 = Sunday

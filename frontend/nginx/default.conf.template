@@ -3,6 +3,14 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # *** NEW ***
+    # Tells the page where the backend API lives. The address comes from the API_URL environment variable.
+    location = /js/config.js {
+        default_type application/javascript;
+        add_header Cache-Control "no-store";
+        return 200 "window.STUDYSTACK_API_URL = '${API_URL}';";
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }

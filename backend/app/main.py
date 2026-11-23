@@ -1,4 +1,7 @@
 from contextlib import asynccontextmanager
+
+import os
+
 from datetime import date, timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -45,10 +48,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Allow the frontend (served on port 3000) to call this API from the browser
+# *** NEW ***
+# Addresses allowed to call this API from a browser, separated by commas.
+# Locally the default is the frontend on port 3000; in the cloud this is set to the frontend's address.
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
