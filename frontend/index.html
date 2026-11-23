@@ -13,6 +13,11 @@
     #schedule-grid th, #schedule-grid td { vertical-align: top; min-width: 130px; }
     .session { margin-bottom: 8px; }
     .overdue { color: crimson; }
+        /* *** NEW *** */
+    #main-nav { display: flex; align-items: center; gap: 16px; padding: 8px 0; border-bottom: 2px solid #ccc; margin-bottom: 16px; }
+    #main-nav a { text-decoration: none; padding: 4px 8px; color: #1a56c4; }
+    #main-nav a.active { font-weight: bold; border-bottom: 3px solid #1a56c4; }
+    #nav-user { margin-left: auto; }
   </style>
 </head>
 <body>
@@ -56,15 +61,13 @@
 
   <!-- Shown when logged in -->
   <div id="logged-in-view" hidden>
-    <h2>Welcome</h2>
-    <p>Logged in as <strong id="user-email"></strong></p>
-    <button id="logout-button">Log out</button>
-
     <!-- *** NEW *** -->
     <nav id="main-nav">
       <a href="#schedule" id="nav-schedule">Schedule</a>
       <a href="#assignments" id="nav-assignments">Assignments</a>
       <a href="#availability" id="nav-availability">Availability</a>
+      <span id="nav-user">Logged in as <strong id="user-email"></strong></span>
+      <button id="logout-button" type="button">Log out</button>
     </nav>
 
     <!-- *** NEW *** -->
