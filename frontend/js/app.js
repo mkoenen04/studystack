@@ -346,10 +346,34 @@ async function loadSchedule() {
   }
 }
 
+// *** NEW ***
+// ----- Navigation (MDT-14): the part of the web address after "#" picks the view -----
+const VIEWS = ["schedule", "assignments", "availability"];
+
+// *** NEW ***
+function showCurrentView() {
+  const requested = window.location.hash.replace("#", "");
+  // Anything unknown falls back to the schedule
+  const current = VIEWS.includes(requested) ? requested : "schedule";
+
+  for (const name of VIEWS) {
+    document.getElementById("view-" + name).hidden = name !== current;
+
+    const link = document.getElementById("nav-" + name);
+    link.classList.toggle("active", name === current);
+    if (name === current) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  }
+}
+
 async function showLoggedInView(email) {
   document.getElementById("user-email").textContent = email;
   document.getElementById("logged-out-view").hidden = true;
   document.getElementById("logged-in-view").hidden = false;
+  showCurrentView();
   // Courses first, so the assignment list can show course names
   await loadCourses();
   await loadAssignments();
@@ -692,6 +716,11 @@ scheduleForm.addEventListener("submit", async function (event) {
   }
   await loadSchedule();
 });
+
+
+// *** NEW ***
+// Back, forward, and clicking a link all change the "#" part, which switches the view
+window.addEventListener("hashchange", showCurrentView);
 
 // On page load, check whether a saved token is still valid
 loadCurrentUser();
